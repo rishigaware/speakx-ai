@@ -195,6 +195,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
   const [audioBlob, setAudioBlob] = useState(null);
+  const [audioDuration, setAudioDuration] = useState(null);
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState("");
@@ -407,6 +408,7 @@ function App() {
     }
 
     setIsLoading(true);
+    setAudioDuration(null);
     let url = "";
     let responseBlob = null;
 
@@ -470,6 +472,10 @@ function App() {
         setAudioBlob(responseBlob);
         const audio = new Audio(url);
         audioRef.current = audio;
+
+        audio.onloadedmetadata = () => {
+          setAudioDuration(audio.duration);
+        };
 
         // If not OpenAI (which speed shifts natively), we apply speed rate client-side
         if (engine !== "openai") {
@@ -810,12 +816,17 @@ function App() {
                     Stop
                   </button>
 
+                  {audioDuration !== null && !isLoading && (
+                    <div className="audio-duration" style={{ marginLeft: "auto", display: "flex", alignItems: "center", fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: "500", padding: "0 10px" }}>
+                      {Math.floor(audioDuration / 60)}:{(Math.floor(audioDuration % 60)).toString().padStart(2, '0')}
+                    </div>
+                  )}
                   <button
                     onClick={handleDownload}
                     className="action-btn download-btn"
                     disabled={!audioUrl}
                     style={{
-                      marginLeft: "auto",
+                      marginLeft: audioDuration !== null && !isLoading ? "10px" : "auto",
                       background: "rgba(79, 70, 229, 0.05)",
                       border: "1px solid var(--accent)",
                       color: "var(--accent)",
