@@ -143,11 +143,17 @@ function App() {
     return cached;
   });
 
-  // User's ElevenLabs API key
+  // User's ElevenLabs API key (loaded from .env)
   const [elevenKey, setElevenKey] = useState(() => {
-    const envKey = import.meta.env.VITE_ELEVENLABS_API_KEY || "sk_d5a3f7910e6e94fc7370edc50d362795749903082873cc7c";
+    const envKey = import.meta.env.VITE_ELEVENLABS_API_KEY || "";
     const cached = localStorage.getItem("voxflow_eleven_key");
-    if (!cached || cached.includes("DEMO_ELEVENLABS") || cached.trim() === "" || !cached.startsWith("sk_")) {
+    if (
+      !cached ||
+      cached.includes("DEMO_ELEVENLABS") ||
+      cached.trim() === "" ||
+      !cached.startsWith("sk_") ||
+      (cached === "sk_d5a3f7910e6e94fc7370edc50d362795749903082873cc7c" && envKey)
+    ) {
       return envKey;
     }
     return cached;
