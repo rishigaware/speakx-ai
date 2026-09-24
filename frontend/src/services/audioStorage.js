@@ -1,7 +1,7 @@
 // IndexedDB-based Audio Storage Service
 // Handles persistent local storage of binary audio blobs without size limits
 
-const DB_NAME = 'voxflow_audio_db';
+const DB_NAME = 'speakxai_audio_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'saved_audios';
 

@@ -1,67 +1,106 @@
-# AuraSpeak: Multi-Engine AI Text-To-Speech Studio
+# SpeakX AI: Multi-Engine AI Text-To-Speech Studio
 
-AuraSpeak is a premium, single-column widescreen Text-to-Speech (TTS) workspace integrating four industry-leading synthesis engines: **ElevenLabs**, **OpenAI TTS**, **Microsoft Azure AI Speech**, and **Sarvam AI**.
+<p align="center">
+  <img src="frontend/public/speakxai-logo-removebg-preview.png" alt="SpeakX AI Logo" width="160" />
+</p>
 
-Designed with modern aesthetics (glassmorphism, soft gradients, responsive cards), it offers complete slider parameters, native cloud audio generation, and client-side playback controls.
+<p align="center">
+  <strong>SpeakX AI</strong> is a premium, studio-grade Text-to-Speech (TTS) workspace integrating four industry-leading voice synthesis engines: <strong>ElevenLabs</strong>, <strong>OpenAI TTS</strong>, <strong>Microsoft Azure AI Speech</strong>, and <strong>Sarvam AI</strong>.
+</p>
+
+<p align="center">
+  <a href="#-quick-deploy-to-vercel">Vercel Deployment</a> •
+  <a href="#-features">Features</a> •
+  <a href="#-project-architecture">Architecture</a> •
+  <a href="#-setup--installation">Setup & Install</a> •
+  <a href="#-engine-comparison--pricing">Pricing & Engines</a>
+</p>
 
 ---
 
 ## 🚀 Features
 
-### 1. Sarvam AI Studio (Indic Focus)
-* **Indic-Optimized Models**: Native integration with the state-of-the-art `bulbul:v3` model.
-* **11 Indic Languages**: Full dialect support for Hindi (`hi-IN`), Indian English (`en-IN`), Bengali (`bn-IN`), Tamil (`ta-IN`), Telugu (`te-IN`), Marathi (`mr-IN`), Gujarati (`gu-IN`), Punjabi (`pa-IN`), Odia (`or-IN`), Kannada (`kn-IN`), and Malayalam (`ml-IN`).
-* **Expressive Regional Speakers**: Access to optimized speakers like **Shubh** & **Shreya** (for Hindi) and **Ratan** & **Ishita** (for English).
-* **Native Pace Settings**: Adjust playback speed directly via the API parameters (0.5x - 2.0x).
+### 1. ElevenLabs Studio (Premium Voices & SFX)
+* **Safe-List Premade Voices**: Preset with verified voices (*Sarah, Roger, Laura, Charlie, George, Callum, River*) preventing billing validation barriers.
+* **Sound Effects Generator (SFX)**: Cinematic sound effect generation with customizable duration.
+* **Voice Customization**: Real-time tuning for *Stability*, *Clarity / Similarity Boost*, and *Style Exaggeration*.
+* **Dynamic Model Switching**: Instant toggling between *Eleven Multilingual v2* and *Eleven English v2*.
 
-### 2. ElevenLabs Studio (Free-Tier Aligned)
-* **Safe-List Premade Selector**: Standardized to pre-made voices (*Sarah, Roger, Laura, Charlie, George, Callum, River*) to bypass billing validation errors.
-* **Auto-Sync Options**: Dynamic syncing buttons for voices and models in the background.
-* **Advanced Settings Block**: Compact sliders for *Stability* and *Clarity / Similarity Boost*.
-* **Codecs**: Internally locked to the standard free-tier compliant format (`mp3_44100_128`).
+### 2. OpenAI TTS Studio
+* **Native API Speed Control**: Granular speed sliders (0.25x - 4.00x) applied directly via OpenAI API parameters for natural prosody without electronic pitch warping.
+* **Multi-Format Export**: Stream audio in **MP3, Opus, AAC, FLAC, WAV, or PCM** formats.
+* **High-Definition Models**: Support for both `tts-1` (real-time low latency) and `tts-1-hd` (studio-grade quality).
+* **Preset Voices**: Full support for *Alloy, Echo, Fable, Onyx, Nova, and Shimmer*.
 
-### 3. OpenAI TTS Studio
-* **Native API Speed Control**: Speed settings (0.25x - 4.00x) are passed directly to the OpenAI API for realistic, natural speech tempo adjustments instead of electronic pitch shifts.
-* **Granular Format Support**: Synthesize audio into six different output codecs: **MP3, Opus, AAC, FLAC, WAV, or PCM**.
-* **Dynamic Input Bounds**: Enforces OpenAI's strict `4096` character limit in the UI text box.
-* **Visual Sync Action buttons**: Direct matching buttons for preset synchronization.
+### 3. Sarvam AI Studio (Indic Language Specialist)
+* **Indic-Optimized Synthesis**: Powered by the cutting-edge `bulbul:v3` model.
+* **11 Regional Indic Languages**: Comprehensive native accent & phoneme support for Hindi (`hi-IN`), Indian English (`en-IN`), Bengali (`bn-IN`), Tamil (`ta-IN`), Telugu (`te-IN`), Marathi (`mr-IN`), Gujarati (`gu-IN`), Punjabi (`pa-IN`), Odia (`or-IN`), Kannada (`kn-IN`), and Malayalam (`ml-IN`).
+* **Expressive Speakers**: Optimized speakers such as *Shubh* & *Shreya* (Hindi) and *Ratan* & *Ishita* (English).
+* **Native Pace Modulation**: Direct API parameter adjustments (0.5x - 2.0x).
 
-### 4. Microsoft Azure TTS Studio
-* **Neural Voices**: Out-of-the-box support for Azure's high-fidelity characters (*Jenny, Guy, Aria, Sonia, Ryan*).
-* **Region Configurator**: Set your regional datacenter endpoint directly (e.g. `eastus`, `westus2`).
+### 4. Microsoft Azure Neural Speech
+* **Neural Cloud Voices**: Instant synthesis with Azure Neural characters (*Jenny, Guy, Aria, Sonia, Ryan*).
+* **Datacenter Region Selector**: Direct endpoint regional selection (e.g. `eastus`, `westus2`, `southeastasia`).
 
-### 5. Interactive Utilities
-* **Direct Downloads**: Download synthesized files with matching file extensions (`.mp3`, `.wav`, `.aac`, `.flac`, etc.).
-* **Custom Audio Visualizer**: Animation wave indicator during active speech playbacks.
-* **Local Storage Cache**: Your custom API keys are saved securely in your browser's local cache.
+### 5. Studio Productivity & Storage
+* **IndexedDB Local Audio Library**: Automatically stores generated audio blobs directly in the browser's persistent IndexedDB cache without storage limits.
+* **Direct Audio Downloads**: Export generated tracks formatted with their respective extensions (`.mp3`, `.wav`, `.aac`, `.flac`, etc.).
+* **Dynamic Waveform Visualizer**: Live playback wave animation indicator.
+* **Responsive Single-Column Design**: Glassmorphism aesthetic, sleek dark mode, and responsive layout.
+
+---
+
+## 🌐 Quick Deploy to Vercel
+
+You can deploy the **SpeakX AI** frontend to Vercel in just a few clicks:
+
+1. **Push your repository** to GitHub or GitLab.
+2. In the [Vercel Dashboard](https://vercel.com/new), click **Add New Project** and import this repository.
+3. Configure the **Build & Development Settings**:
+   * **Root Directory**: `frontend`
+   * **Framework Preset**: `Vite`
+   * **Build Command**: `npm run build`
+   * **Output Directory**: `dist`
+4. Add your **Environment Variables** in the Vercel project settings:
+   * `VITE_OPENAI_API_KEY` = `your_openai_api_key`
+   * `VITE_ELEVENLABS_API_KEY` = `your_elevenlabs_api_key`
+   * `VITE_BACKEND_URL` = *(Optional: URL of deployed backend gateway for Sarvam AI)*
+5. Click **Deploy**. Your app will be live at `https://speakxai.vercel.app` (or your chosen project name)!
 
 ---
 
 ## 🛠️ Project Architecture
 
-AuraSpeak uses a modular, standardized directory layout separating client-side components, styling, API services, and server-side routes/controllers.
+SpeakX AI uses a modular layout separating frontend components, client-side caching, API gateways, and regional proxy services:
 
 ```
-text-to-audio/
-├── frontend/                     # React + Vite Frontend App
+speakx-ai/
+├── frontend/                     # React 19 + Vite 8 Frontend Studio
+│   ├── public/                   # Static assets & icons
+│   │   ├── speakxai-logo.png     # Full SpeakX AI Studio Brand Logo
+│   │   ├── favicon.png           # 512x512 PNG Favicon
+│   │   ├── favicon-192.png       # 192x192 Web App Icon
+│   │   ├── favicon-32.png        # 32x32 Browser Tab Icon
+│   │   └── apple-touch-icon.png  # Apple Touch Icon
 │   ├── src/
-│   │   ├── assets/               # SVGs, logos, react/vite assets
-│   │   ├── components/           # Reusable UI components
-│   │   │   └── controls/         # Voice engine parameter components
+│   │   ├── components/
+│   │   │   └── controls/         # Studio engine controls
 │   │   │       ├── AzureControls.jsx
 │   │   │       ├── ElevenLabsControls.jsx
 │   │   │       ├── OpenAIControls.jsx
 │   │   │       └── SarvamControls.jsx
-│   │   ├── services/             # Clean API Caller Service
-│   │   │   └── ttsService.js
-│   │   ├── styles/               # CSS Stylesheets
-│   │   │   └── App.css
-│   │   ├── App.jsx               # Main Studio Layout component
-│   │   ├── index.css             # Root variables & browser resets
-│   │   └── main.jsx              # DOM Mounting Entry
+│   │   ├── services/
+│   │   │   ├── audioStorage.js   # IndexedDB persistent audio cache
+│   │   │   └── ttsService.js     # Unified TTS API abstraction layer
+│   │   ├── styles/
+│   │   │   ├── App.css           # Studio styling & micro-animations
+│   │   │   └── index.css         # Theme tokens & typography
+│   │   ├── App.jsx               # Main SpeakX AI Workspace component
+│   │   ├── index.html            # Entry HTML with meta & brand icons
+│   │   └── main.jsx              # React mounting root
 │   ├── .env                      # Private frontend credentials (Gitignored)
-│   └── package.json              # Frontend scripts & configurations
-├── backend/                      # Node + Express API Proxy Gateway
+│   └── package.json              # Frontend scripts & dependencies
+├── backend/                      # Node.js + Express API Gateway
 │   ├── controllers/              # Route controller logic
 │   │   └── ttsController.js      # Business logic to talk to Sarvam SDK
 │   ├── routes/                   # Routing configuration middleware
@@ -69,7 +108,7 @@ text-to-audio/
 │   ├── index.js                  # Express entry point
 │   ├── .env                      # Private backend keys (Gitignored)
 │   └── package.json              # Backend scripts & dependency lock
-├── package.json                  # Root workspace script launcher
+├── package.json                  # Root monorepo workspace launcher
 └── README.md                     # Studio Documentation
 ```
 
@@ -80,16 +119,16 @@ text-to-audio/
 ### 1. Configure Credentials
 
 #### Frontend Credentials
-Create a `.env` file inside the `frontend` folder to keep your client-side API keys private:
+Create or edit `.env` in `frontend/`:
 
-```bash
+```env
 # Path: frontend/.env
 VITE_OPENAI_API_KEY=your_openai_api_key_here
 VITE_ELEVENLABS_API_KEY=your_elevenlabs_api_key_here
 ```
 
 #### Backend Credentials
-Create or edit the `.env` file inside the `backend` folder to configure Sarvam AI securely:
+Create or edit `.env` in `backend/`:
 
 ```env
 # Path: backend/.env
@@ -97,29 +136,34 @@ PORT=5001
 SARVAM_API_KEY=your_sarvam_api_key_here
 ```
 
-*Note: Environment files (`.env*`) are automatically ignored in git commits to protect credentials.*
+*Note: Environment files (`.env`) are git-ignored to prevent leaking credentials.*
 
-### 2. Run the Studio
-From the root workspace directory, install dependencies and start both the frontend and backend simultaneously:
+### 2. Run the Studio Locally
 
 ```bash
-# Install root, frontend, and backend packages
-npm install
+# 1. Install dependencies in frontend and backend
+cd frontend && npm install
+cd ../backend && npm install
 
-# Start both services concurrently
-npm run dev
+# 2. Run frontend development server
+cd ../frontend && npm run dev
 ```
 
-* **Frontend Studio**: Running on [http://localhost:5173](http://localhost:5173)
-* **Backend Gateway**: Running on [http://localhost:5001](http://localhost:5001)
+* **Frontend Studio**: [http://localhost:5173](http://localhost:5173)
+* **Backend Gateway**: [http://localhost:5001](http://localhost:5001)
 
 ---
 
-## ⚡ Pay-As-You-Go Pricing Side-by-Side
+## ⚡ Engine Comparison & Pricing
 
-| Provider | Pricing (Per 1 Million Characters) | Billing Style |
-| :--- | :--- | :--- |
-| **OpenAI TTS** | **$15.00** (Standard) / **$30.00** (HD) | Usage-based pay-as-you-go |
-| **Azure AI Speech** | **$16.00** (Standard Neural) | Usage-based after 500,000 free chars/month |
-| **Sarvam AI** | **Pay-As-You-Go** | Regional Indic-focused billing |
-| **ElevenLabs** | **$110.00 - $300.00** (Starts at $0.11/1k) | Credit tier top-ups |
+| Provider | Model / Focus | Pricing (Per 1 Million Characters) | Key Strengths |
+| :--- | :--- | :--- | :--- |
+| **ElevenLabs** | Multilingual v2 / SFX | **$110.00 – $300.00** | Ultra-realistic emotional inflection, cinematic SFX |
+| **OpenAI TTS** | `tts-1` & `tts-1-hd` | **$15.00** (Std) / **$30.00** (HD) | Crystal-clear narration, multiple formats (FLAC/WAV/AAC) |
+| **Sarvam AI** | `bulbul:v3` | **Pay-As-You-Go** | Industry-best Indian accent & 11 Indic languages |
+| **Azure Speech**| Neural Voice Suite | **$16.00** (Neural) | Low latency, enterprise reliability & datacenter control |
+
+---
+
+## 📄 License
+MIT © 2026 SpeakX AI Studio.

@@ -136,7 +136,7 @@ function App() {
 
   // API Keys (pre-filled with standard placeholder keys so users don't need to type)
   const [openaiKey, setOpenaiKey] = useState(() => {
-    const cached = localStorage.getItem("voxflow_openai_key");
+    const cached = localStorage.getItem("speakx_openai_key") || localStorage.getItem("voxflow_openai_key");
     if (!cached || cached.includes("DEMO_OPENAI_API_KEY")) {
       return import.meta.env.VITE_OPENAI_API_KEY || "";
     }
@@ -146,7 +146,7 @@ function App() {
   // User's ElevenLabs API key (loaded from .env)
   const [elevenKey, setElevenKey] = useState(() => {
     const envKey = import.meta.env.VITE_ELEVENLABS_API_KEY || "";
-    const cached = localStorage.getItem("voxflow_eleven_key");
+    const cached = localStorage.getItem("speakx_eleven_key") || localStorage.getItem("voxflow_eleven_key");
     if (
       !cached ||
       cached.includes("DEMO_ELEVENLABS") ||
@@ -160,11 +160,12 @@ function App() {
   });
   const [azureKey, setAzureKey] = useState(
     () =>
+      localStorage.getItem("speakx_azure_key") ||
       localStorage.getItem("voxflow_azure_key") ||
       "azure_DEMO_AZURE_SUBSCRIPTION_KEY_012",
   );
   const [azureRegion, setAzureRegion] = useState(
-    () => localStorage.getItem("voxflow_azure_region") || "eastus",
+    () => localStorage.getItem("speakx_azure_region") || localStorage.getItem("voxflow_azure_region") || "eastus",
   );
 
   // ElevenLabs States (using user's verified working premade voices list)
@@ -223,7 +224,7 @@ function App() {
   // Local Storage & Audio Cache states
   const [savedAudios, setSavedAudios] = useState([]);
   const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(() => {
-    return localStorage.getItem("voxflow_auto_save") !== "false";
+    return (localStorage.getItem("speakx_auto_save") || localStorage.getItem("voxflow_auto_save")) !== "false";
   });
   const [isCurrentAudioSaved, setIsCurrentAudioSaved] = useState(false);
   const [cachedMatch, setCachedMatch] = useState(null);
@@ -256,7 +257,7 @@ function App() {
 
   // Save auto-save preference
   useEffect(() => {
-    localStorage.setItem("voxflow_auto_save", isAutoSaveEnabled ? "true" : "false");
+    localStorage.setItem("speakx_auto_save", isAutoSaveEnabled ? "true" : "false");
   }, [isAutoSaveEnabled]);
 
   // Check if current text + voice combination is already cached locally
@@ -298,13 +299,13 @@ function App() {
 
   // Save keys to localStorage
   useEffect(() => {
-    localStorage.setItem("voxflow_openai_key", openaiKey);
+    localStorage.setItem("speakx_openai_key", openaiKey);
     if (openaiKey && !openaiKey.includes("DEMO_OPENAI_API_KEY")) {
       fetchOpenaiModels();
     }
   }, [openaiKey]);
   useEffect(() => {
-    localStorage.setItem("voxflow_eleven_key", elevenKey);
+    localStorage.setItem("speakx_eleven_key", elevenKey);
     if (elevenKey && !elevenKey.includes("DEMO_ELEVENLABS")) {
       fetchElevenVoices();
       fetchElevenModels();
@@ -402,8 +403,8 @@ function App() {
     }
   };
   useEffect(() => {
-    localStorage.setItem("voxflow_azure_key", azureKey);
-    localStorage.setItem("voxflow_azure_region", azureRegion);
+    localStorage.setItem("speakx_azure_key", azureKey);
+    localStorage.setItem("speakx_azure_region", azureRegion);
   }, [azureKey, azureRegion]);
 
   const synthRef = useRef(window.speechSynthesis);
@@ -984,7 +985,7 @@ function App() {
             : isPcm
               ? "pcm"
               : "mp3";
-    link.download = `voxflow_synthesis.${ext}`;
+    link.download = `speakxai_synthesis.${ext}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1041,9 +1042,14 @@ function App() {
       {/* Header */}
       <header className="app-header">
         <div className="logo-container">
-          <div className="glow-circle"></div>
+          <img 
+            src="/speakxai-logo-removebg-preview.png" 
+            alt="SpeakX AI" 
+            className="brand-logo-icon" 
+            style={{ width: '32px', height: '32px', objectFit: 'contain', filter: 'drop-shadow(0 0 10px rgba(139, 92, 246, 0.5))' }} 
+          />
           <span className="logo-text">
-            AuraSpeak<span className="accent-dot"></span>
+            SpeakX<span className="accent-dot"> AI</span>
           </span>
         </div>
         <div className="tech-stack">
@@ -2502,7 +2508,7 @@ function App() {
       </main>
 
       <footer className="app-footer">
-        <p>© 2026 VoxFlow Studio. Rendered via selected AI API integrations.</p>
+        <p>© 2026 SpeakX AI Studio. Rendered via selected AI API integrations.</p>
       </footer>
     </div>
   );

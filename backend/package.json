@@ -1,5 +1,5 @@
 {
-  "name": "text-to-audio-backend",
+  "name": "speakx-ai-backend",
   "version": "1.0.0",
   "type": "module",
   "main": "index.js",
