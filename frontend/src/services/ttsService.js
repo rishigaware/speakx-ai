@@ -44,8 +44,19 @@ export const fetchOpenAIModels = async (key) => {
 };
 
 // 2. ElevenLabs Service Calls
-export const synthesizeElevenLabsSpeech = async ({ key, voiceId, model, text, stability, similarity }) => {
-  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+export const synthesizeElevenLabsSpeech = async ({ 
+  key, 
+  voiceId, 
+  model, 
+  text, 
+  stability, 
+  similarity, 
+  style = 0, 
+  useSpeakerBoost = true,
+  outputFormat = 'mp3_44100_128' 
+}) => {
+  const format = outputFormat || 'mp3_44100_128';
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=${format}`, {
     method: 'POST',
     headers: {
       'xi-api-key': key,
@@ -53,10 +64,12 @@ export const synthesizeElevenLabsSpeech = async ({ key, voiceId, model, text, st
     },
     body: JSON.stringify({
       text: text,
-      model_id: model,
+      model_id: model || 'eleven_multilingual_v2',
       voice_settings: {
-        stability: stability / 100,
-        similarity_boost: similarity / 100
+        stability: (stability ?? 50) / 100,
+        similarity_boost: (similarity ?? 75) / 100,
+        style: (style ?? 0) / 100,
+        use_speaker_boost: Boolean(useSpeakerBoost)
       }
     })
   });
@@ -68,7 +81,7 @@ export const synthesizeElevenLabsSpeech = async ({ key, voiceId, model, text, st
       const errJson = JSON.parse(errText);
       if (errJson.detail && errJson.detail.message) errMsg = errJson.detail.message;
       else if (errJson.message) errMsg = errJson.message;
-    } catch (e) {}
+    } catch {}
     throw new Error(errMsg);
   }
   return await response.blob();
@@ -97,6 +110,54 @@ export const fetchElevenLabsModels = async (key) => {
   return await response.json();
 };
 
+/**
+ * Fetch ElevenLabs user profile & remaining character quota
+ */
+export const fetchElevenLabsUserInfo = async (key) => {
+  const response = await fetch('https://api.elevenlabs.io/v1/user', {
+    method: 'GET',
+    headers: {
+      'xi-api-key': key
+    }
+  });
+  if (!response.ok) return null;
+  return await response.json();
+};
+
+/**
+ * ElevenLabs Sound Effects Generation API
+ */
+export const generateElevenLabsSoundEffect = async ({ key, text, durationSeconds }) => {
+  const payload = {
+    text: text,
+    prompt_influence: 0.3
+  };
+  if (durationSeconds) {
+    payload.duration_seconds = Number(durationSeconds);
+  }
+
+  const response = await fetch('https://api.elevenlabs.io/v1/sound-generation', {
+    method: 'POST',
+    headers: {
+      'xi-api-key': key,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(payload)
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let errMsg = errText;
+    try {
+      const errJson = JSON.parse(errText);
+      if (errJson.detail && errJson.detail.message) errMsg = errJson.detail.message;
+      else if (errJson.message) errMsg = errJson.message;
+    } catch {}
+    throw new Error(errMsg || 'Sound generation failed.');
+  }
+  return await response.blob();
+};
+
 // 3. Microsoft Azure Service Calls
 export const synthesizeAzureSpeech = async ({ key, region, voice, text }) => {
   const response = await fetch(`https://${region}.tts.speech.microsoft.com/cognitiveservices/v1`, {
@@ -115,7 +176,8 @@ export const synthesizeAzureSpeech = async ({ key, region, voice, text }) => {
 
 // 4. Sarvam AI Service Calls (Proxied through backend)
 export const synthesizeSarvamSpeech = async ({ model, text, languageCode, speaker, pace }) => {
-  const response = await fetch('http://localhost:5000/api/tts/sarvam', {
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+  const response = await fetch(`${backendUrl}/api/tts/sarvam`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

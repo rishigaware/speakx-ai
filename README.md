@@ -93,7 +93,7 @@ Create or edit the `.env` file inside the `backend` folder to configure Sarvam A
 
 ```env
 # Path: backend/.env
-PORT=5000
+PORT=5001
 SARVAM_API_KEY=your_sarvam_api_key_here
 ```
 
@@ -111,7 +111,7 @@ npm run dev
 ```
 
 * **Frontend Studio**: Running on [http://localhost:5173](http://localhost:5173)
-* **Backend Gateway**: Running on [http://localhost:5000](http://localhost:5000)
+* **Backend Gateway**: Running on [http://localhost:5001](http://localhost:5001)
 
 ---
 

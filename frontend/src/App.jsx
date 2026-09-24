@@ -4,10 +4,19 @@ import {
   synthesizeElevenLabsSpeech,
   fetchElevenLabsVoices,
   fetchElevenLabsModels,
+  fetchElevenLabsUserInfo,
+  generateElevenLabsSoundEffect,
   synthesizeAzureSpeech,
   synthesizeSarvamSpeech,
 } from "./services/ttsService";
-import { useState, useEffect, useRef } from "react";
+import {
+  saveAudioToStorage,
+  getAllStoredAudios,
+  findCachedAudio,
+  deleteStoredAudio,
+  clearAllStoredAudios,
+} from "./services/audioStorage";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 import AzureControls from "./components/controls/AzureControls";
 import ElevenLabsControls from "./components/controls/ElevenLabsControls";
@@ -136,9 +145,10 @@ function App() {
 
   // User's ElevenLabs API key
   const [elevenKey, setElevenKey] = useState(() => {
+    const envKey = import.meta.env.VITE_ELEVENLABS_API_KEY || "sk_d5a3f7910e6e94fc7370edc50d362795749903082873cc7c";
     const cached = localStorage.getItem("voxflow_eleven_key");
-    if (!cached || cached.includes("DEMO_ELEVENLABS")) {
-      return import.meta.env.VITE_ELEVENLABS_API_KEY || "";
+    if (!cached || cached.includes("DEMO_ELEVENLABS") || cached.trim() === "" || !cached.startsWith("sk_")) {
+      return envKey;
     }
     return cached;
   });
@@ -164,6 +174,12 @@ function App() {
   const [elevenStability, setElevenStability] = useState(50);
   const [elevenSimilarity, setElevenSimilarity] = useState(75);
   const [elevenLanguage, setElevenLanguage] = useState("en");
+  const [elevenMode, setElevenMode] = useState("tts"); // "tts" or "sfx"
+  const [elevenStyle, setElevenStyle] = useState(0);
+  const [elevenSpeakerBoost, setElevenSpeakerBoost] = useState(true);
+  const [elevenOutputFormat, setElevenOutputFormat] = useState("mp3_44100_128");
+  const [elevenSfxDuration, setElevenSfxDuration] = useState(2.5);
+  const [elevenUserInfo, setElevenUserInfo] = useState(null);
 
   // Speed slider (ranges 0.70x to 1.50x)
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
@@ -196,6 +212,21 @@ function App() {
   const [audioUrl, setAudioUrl] = useState("");
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioDuration, setAudioDuration] = useState(null);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  // Local Storage & Audio Cache states
+  const [savedAudios, setSavedAudios] = useState([]);
+  const [isAutoSaveEnabled, setIsAutoSaveEnabled] = useState(() => {
+    return localStorage.getItem("voxflow_auto_save") !== "false";
+  });
+  const [isCurrentAudioSaved, setIsCurrentAudioSaved] = useState(false);
+  const [cachedMatch, setCachedMatch] = useState(null);
+  const [showSavedLibrary, setShowSavedLibrary] = useState(true);
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyVoiceFilter, setHistoryVoiceFilter] = useState("all");
+  const [historyEngineFilter, setHistoryEngineFilter] = useState("all");
+  const [historyGroupByVoice, setHistoryGroupByVoice] = useState(true);
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState("");
@@ -206,6 +237,58 @@ function App() {
       setToastMessage("");
     }, 4000);
   };
+
+  const loadStoredAudios = async () => {
+    const list = await getAllStoredAudios();
+    setSavedAudios(list);
+  };
+
+  // Load stored audios on initial mount
+  useEffect(() => {
+    loadStoredAudios();
+  }, []);
+
+  // Save auto-save preference
+  useEffect(() => {
+    localStorage.setItem("voxflow_auto_save", isAutoSaveEnabled ? "true" : "false");
+  }, [isAutoSaveEnabled]);
+
+  // Check if current text + voice combination is already cached locally
+  useEffect(() => {
+    let active = true;
+    const checkCache = async () => {
+      if (!text || text.trim().length === 0) {
+        setCachedMatch(null);
+        return;
+      }
+      const activeVoice =
+        engine === "openai" ? openaiVoice :
+        engine === "elevenlabs" ? elevenVoiceId :
+        engine === "azure" ? azureVoice :
+        sarvamSpeaker;
+
+      const activeModel =
+        engine === "openai" ? openaiModel :
+        engine === "elevenlabs" ? elevenModel :
+        engine === "sarvam" ? sarvamModel : "";
+
+      const found = await findCachedAudio({
+        text,
+        engine,
+        voice: activeVoice,
+        model: activeModel,
+      });
+
+      if (active) {
+        setCachedMatch(found);
+      }
+    };
+
+    checkCache();
+    return () => {
+      active = false;
+    };
+  }, [text, engine, openaiVoice, elevenVoiceId, azureVoice, sarvamSpeaker, openaiModel, elevenModel, sarvamModel, savedAudios]);
 
   // Save keys to localStorage
   useEffect(() => {
@@ -219,6 +302,9 @@ function App() {
     if (elevenKey && !elevenKey.includes("DEMO_ELEVENLABS")) {
       fetchElevenVoices();
       fetchElevenModels();
+      fetchElevenLabsUserInfo(elevenKey).then((info) => {
+        if (info) setElevenUserInfo(info);
+      }).catch(() => {});
     }
   }, [elevenKey]);
 
@@ -434,15 +520,33 @@ function App() {
           setIsLoading(false);
           return;
         }
-        responseBlob = await synthesizeElevenLabsSpeech({
-          key: elevenKey,
-          voiceId: elevenVoiceId,
-          model: elevenModel,
-          text: text,
-          stability: elevenStability,
-          similarity: elevenSimilarity,
-        });
+        if (elevenMode === "sfx") {
+          responseBlob = await generateElevenLabsSoundEffect({
+            key: elevenKey,
+            text: text,
+            durationSeconds: elevenSfxDuration,
+          });
+        } else {
+          responseBlob = await synthesizeElevenLabsSpeech({
+            key: elevenKey,
+            voiceId: elevenVoiceId,
+            model: elevenModel,
+            text: text,
+            stability: elevenStability,
+            similarity: elevenSimilarity,
+            style: elevenStyle,
+            useSpeakerBoost: elevenSpeakerBoost,
+            outputFormat: elevenOutputFormat,
+          });
+        }
         url = URL.createObjectURL(responseBlob);
+
+        // Refresh user character balance in background
+        if (elevenKey.startsWith("sk_")) {
+          fetchElevenLabsUserInfo(elevenKey).then((info) => {
+            if (info) setElevenUserInfo(info);
+          }).catch(() => {});
+        }
       } else if (engine === "azure") {
         if (!azureKey || !azureRegion || azureKey === "") {
           alert("Please enter your Azure Subscription Key and Region.");
@@ -477,6 +581,10 @@ function App() {
           setAudioDuration(audio.duration);
         };
 
+        audio.ontimeupdate = () => {
+          setCurrentTime(audio.currentTime);
+        };
+
         // If not OpenAI (which speed shifts natively), we apply speed rate client-side
         if (engine !== "openai") {
           audio.playbackRate = playbackSpeed;
@@ -488,7 +596,44 @@ function App() {
         audio.onended = () => {
           setIsPlaying(false);
           setIsPaused(false);
+          setCurrentTime(0);
         };
+
+        // Automatically store in local storage if auto-save is enabled
+        if (isAutoSaveEnabled && responseBlob) {
+          const activeVoice =
+            engine === "openai" ? openaiVoice :
+            engine === "elevenlabs" ? elevenVoiceId :
+            engine === "azure" ? azureVoice :
+            sarvamSpeaker;
+
+          const activeVoiceName =
+            engine === "openai" ? (openaiVoices.find(v => v.voice_id === openaiVoice)?.name || openaiVoice) :
+            engine === "elevenlabs" ? (elevenVoices.find(v => v.voice_id === elevenVoiceId)?.name || elevenVoiceId) :
+            engine === "azure" ? azureVoice :
+            sarvamSpeaker;
+
+          const activeModel =
+            engine === "openai" ? openaiModel :
+            engine === "elevenlabs" ? elevenModel :
+            engine === "sarvam" ? sarvamModel : "";
+
+          saveAudioToStorage({
+            text,
+            engine,
+            voice: activeVoice,
+            voiceName: activeVoiceName,
+            model: activeModel,
+            blob: responseBlob,
+            duration: null,
+          }).then(() => {
+            setIsCurrentAudioSaved(true);
+            loadStoredAudios();
+            showToast("✨ Audio generated & saved to local storage! No need to generate again.");
+          }).catch(console.error);
+        } else {
+          setIsCurrentAudioSaved(false);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -498,6 +643,278 @@ function App() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // Save current audio to local storage manually
+  const handleSaveCurrentAudio = async () => {
+    if (!audioBlob || !text) return;
+    try {
+      const activeVoice =
+        engine === "openai" ? openaiVoice :
+        engine === "elevenlabs" ? elevenVoiceId :
+        engine === "azure" ? azureVoice :
+        sarvamSpeaker;
+
+      const activeVoiceName =
+        engine === "openai" ? (openaiVoices.find(v => v.voice_id === openaiVoice)?.name || openaiVoice) :
+        engine === "elevenlabs" ? (elevenVoices.find(v => v.voice_id === elevenVoiceId)?.name || elevenVoiceId) :
+        engine === "azure" ? azureVoice :
+        sarvamSpeaker;
+
+      const activeModel =
+        engine === "openai" ? openaiModel :
+        engine === "elevenlabs" ? elevenModel :
+        engine === "sarvam" ? sarvamModel : "";
+
+      await saveAudioToStorage({
+        text,
+        engine,
+        voice: activeVoice,
+        voiceName: activeVoiceName,
+        model: activeModel,
+        blob: audioBlob,
+        duration: audioDuration,
+      });
+
+      setIsCurrentAudioSaved(true);
+      await loadStoredAudios();
+      showToast("💾 Audio saved to local storage! Play it anytime without regenerating.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save audio to local storage.");
+    }
+  };
+
+  // Play an audio item from local storage directly without calling any API
+  const handlePlayStoredAudio = (item) => {
+    if (!item || !item.blob) return;
+
+    if (playingAudioId === item.id) {
+      if (isPlaying) {
+        handlePause();
+        return;
+      } else if (isPaused && audioRef.current) {
+        audioRef.current.play();
+        setIsPlaying(true);
+        setIsPaused(false);
+        return;
+      }
+    }
+
+    handleStop();
+
+    if (item.text) setText(item.text);
+    if (item.engine) setEngine(item.engine);
+
+    const url = URL.createObjectURL(item.blob);
+    setAudioUrl(url);
+    setAudioBlob(item.blob);
+    setAudioDuration(item.duration || null);
+    setPlayingAudioId(item.id);
+
+    const audio = new Audio(url);
+    audioRef.current = audio;
+
+    audio.onloadedmetadata = () => {
+      if (item.duration) {
+        setAudioDuration(item.duration);
+      } else {
+        setAudioDuration(audio.duration);
+      }
+    };
+
+    audio.ontimeupdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+
+    if (item.engine !== "openai") {
+      audio.playbackRate = playbackSpeed;
+    }
+
+    audio.play();
+    setIsPlaying(true);
+    setIsPaused(false);
+    setIsCurrentAudioSaved(true);
+
+    audio.onended = () => {
+      setIsPlaying(false);
+      setIsPaused(false);
+      setPlayingAudioId(null);
+      setCurrentTime(0);
+    };
+
+    showToast(`⚡ Loaded "${item.voiceName || item.voice}" from local storage (0 API credits used).`);
+  };
+
+  // Delete a specific stored audio
+  const handleDeleteStoredAudio = async (e, id) => {
+    e.stopPropagation();
+    try {
+      await deleteStoredAudio(id);
+      await loadStoredAudios();
+      showToast("🗑 Stored audio removed.");
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // Clear all stored audios
+  const handleClearAllStoredAudios = async () => {
+    if (window.confirm("Remove all saved audios from local storage?")) {
+      await clearAllStoredAudios();
+      await loadStoredAudios();
+      setIsCurrentAudioSaved(false);
+      showToast("Cleared all stored audios from local storage.");
+    }
+  };
+
+  // Derived unique engines and voice profiles for history filtering
+  const uniqueVoiceProfiles = useMemo(() => {
+    const voices = new Set();
+    savedAudios.forEach((item) => {
+      const v = item.voiceName || item.voice;
+      if (v) voices.add(v);
+    });
+    return Array.from(voices).sort((a, b) => a.localeCompare(b));
+  }, [savedAudios]);
+
+  const uniqueEngines = useMemo(() => {
+    const engines = new Set();
+    savedAudios.forEach((item) => {
+      if (item.engine) engines.add(item.engine);
+    });
+    return Array.from(engines).sort();
+  }, [savedAudios]);
+
+  // Filtered audios based on voice profile, engine, and search text
+  const filteredAudios = useMemo(() => {
+    return savedAudios.filter((item) => {
+      // Voice filter
+      if (historyVoiceFilter !== "all") {
+        const itemVoice = item.voiceName || item.voice || "";
+        if (itemVoice !== historyVoiceFilter) return false;
+      }
+      // Engine filter
+      if (historyEngineFilter !== "all") {
+        if ((item.engine || "").toLowerCase() !== historyEngineFilter.toLowerCase()) return false;
+      }
+      // Search filter
+      if (historySearch.trim()) {
+        const q = historySearch.toLowerCase();
+        const matchesText = (item.text || "").toLowerCase().includes(q);
+        const matchesVoice = (item.voiceName || item.voice || "").toLowerCase().includes(q);
+        const matchesEngine = (item.engine || "").toLowerCase().includes(q);
+        if (!matchesText && !matchesVoice && !matchesEngine) return false;
+      }
+      return true;
+    });
+  }, [savedAudios, historyVoiceFilter, historyEngineFilter, historySearch]);
+
+  // Group filtered audios by Voice Profile
+  const audiosByVoiceProfile = useMemo(() => {
+    const map = new Map();
+    filteredAudios.forEach((item) => {
+      const voiceKey = item.voiceName || item.voice || "Unknown Voice";
+      if (!map.has(voiceKey)) {
+        map.set(voiceKey, {
+          voiceName: voiceKey,
+          engine: item.engine,
+          items: [],
+        });
+      }
+      map.get(voiceKey).items.push(item);
+    });
+    return Array.from(map.values());
+  }, [filteredAudios]);
+
+  const renderStoredAudioItem = (item) => {
+    const isItemPlaying = playingAudioId === item.id && isPlaying;
+    return (
+      <div key={item.id} className={`stored-item ${isItemPlaying ? "is-playing" : ""}`}>
+        <div className="stored-meta">
+          <div className="stored-text-preview" title={item.text}>
+            "{item.text}"
+          </div>
+          <div className="stored-tags">
+            <span className={`stored-engine-tag tag-${(item.engine || "azure").toLowerCase()}`}>
+              {item.engine}
+            </span>
+            <span>•</span>
+            <span style={{ fontWeight: "600", color: "var(--text-h)" }}>{item.voiceName || item.voice}</span>
+            <span>•</span>
+            <span>{new Date(item.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(item.createdAt).toLocaleDateString()})</span>
+            {item.duration && (
+              <>
+                <span>•</span>
+                <span>{Math.round(item.duration)}s</span>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="stored-actions">
+          <button
+            type="button"
+            className={`stored-act-btn ${isItemPlaying ? "is-active" : ""}`}
+            onClick={() => handlePlayStoredAudio(item)}
+            title={isItemPlaying ? "Pause audio" : "Play directly without calling API"}
+          >
+            {isItemPlaying ? (
+              <>
+                <svg viewBox="0 0 24 24" style={{ width: "13px", height: "13px", fill: "currentColor" }}>
+                  <path d="M14,19H18V5H14M6,19H10V5H6V19Z"/>
+                </svg>
+                Pause
+              </>
+            ) : (
+              <>
+                <svg viewBox="0 0 24 24" style={{ width: "13px", height: "13px", fill: "currentColor" }}>
+                  <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
+                </svg>
+                Play
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            className="stored-act-btn"
+            onClick={() => {
+              if (item.text) setText(item.text);
+              if (item.engine) setEngine(item.engine);
+              showToast(`Loaded text and ${item.engine} settings into studio.`);
+            }}
+            title="Load text and engine into editor"
+          >
+            Use
+          </button>
+          <button
+            type="button"
+            className="stored-act-btn"
+            onClick={() => {
+              const link = document.createElement("a");
+              link.href = URL.createObjectURL(item.blob);
+              link.download = `${item.engine}_${(item.voiceName || item.voice).replace(/\s+/g, '_')}.mp3`;
+              link.click();
+            }}
+            title="Download audio file"
+          >
+            <svg viewBox="0 0 24 24" style={{ width: "13px", height: "13px", fill: "currentColor" }}>
+              <path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/>
+            </svg>
+            Download
+          </button>
+          <button
+            type="button"
+            className="stored-act-btn delete-btn"
+            onClick={(e) => handleDeleteStoredAudio(e, item.id)}
+            title="Delete from local storage"
+          >
+            <svg viewBox="0 0 24 24" style={{ width: "13px", height: "13px", fill: "currentColor" }}>
+              <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const handlePause = () => {
@@ -535,6 +952,8 @@ function App() {
     }
     setIsPlaying(false);
     setIsPaused(false);
+    setPlayingAudioId(null);
+    setCurrentTime(0);
   };
 
   // Handle direct file download
@@ -564,6 +983,49 @@ function App() {
     link.click();
     document.body.removeChild(link);
   };
+
+  const handleSeek = (e) => {
+    const target = parseFloat(e.target.value);
+    setCurrentTime(target);
+    if (audioRef.current) {
+      audioRef.current.currentTime = target;
+    }
+  };
+
+  const handleCycleSpeed = () => {
+    const speeds = [0.75, 1.0, 1.25, 1.5, 2.0];
+    const currentIndex = speeds.findIndex((s) => Math.abs(s - playbackSpeed) < 0.05);
+    const nextSpeed = speeds[(currentIndex + 1) % speeds.length];
+    setPlaybackSpeed(nextSpeed);
+    if (audioRef.current && engine !== "openai") {
+      audioRef.current.playbackRate = nextSpeed;
+    }
+    showToast(`Playback speed: ${nextSpeed}x`);
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const activeVoiceName = useMemo(() => {
+    if (engine === "openai") {
+      return openaiVoices.find((v) => v.voice_id === openaiVoice)?.name || openaiVoice;
+    }
+    if (engine === "elevenlabs") {
+      if (elevenMode === "sfx") return "Sound Effects Generator";
+      return elevenVoices.find((v) => v.voice_id === elevenVoiceId)?.name || elevenVoiceId;
+    }
+    if (engine === "azure") {
+      return azureVoice.replace("Neural", "").replace("en-US-", "");
+    }
+    if (engine === "sarvam") {
+      return sarvamSpeaker;
+    }
+    return "Default Voice";
+  }, [engine, openaiVoice, openaiVoices, elevenMode, elevenVoiceId, elevenVoices, azureVoice, sarvamSpeaker]);
 
   return (
     <div className="app-viewport">
@@ -640,51 +1102,14 @@ function App() {
           {/* Main workspace box */}
           <div className="studio-card">
             <div className="studio-layout">
-              {/* Input text panel */}
+              {/* Input text & Voice Persona panel (Left) */}
               <div className="input-panel">
-                <label htmlFor="tts-text" className="panel-label">
-                  Input Text
-                </label>
-                <textarea
-                  id="tts-text"
-                  className="text-input"
-                  placeholder="Type or paste your text here..."
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  maxLength={engine === "openai" ? 4096 : 5000}
-                />
-                <div className="char-count">
-                  {text.length}/{engine === "openai" ? 4096 : 5000} characters
-                </div>
-              </div>
-
-              {/* Configurations panel */}
-              <div className="controls-panel">
-                <h3 className="panel-subtitle">Parameters</h3>
-
-                {engine === "openai" && (
-                  <OpenAIControls
-                    openaiKey={openaiKey}
-                    setOpenaiKey={setOpenaiKey}
-                    openaiVoice={openaiVoice}
-                    setOpenaiVoice={setOpenaiVoice}
-                    openaiVoices={openaiVoices}
-                    isSyncingOpenaiVoices={isSyncingOpenaiVoices}
-                    syncOpenaiVoices={syncOpenaiVoices}
-                    openaiModel={openaiModel}
-                    setOpenaiModel={setOpenaiModel}
-                    openaiModels={openaiModels}
-                    isFetchingOpenaiModels={isFetchingOpenaiModels}
-                    syncOpenaiModels={syncOpenaiModels}
-                    openaiFormat={openaiFormat}
-                    setOpenaiFormat={setOpenaiFormat}
-                  />
-                )}
-
+                {/* Voice Persona Controls for selected engine */}
                 {engine === "elevenlabs" && (
                   <ElevenLabsControls
-                    elevenKey={elevenKey}
-                    setElevenKey={setElevenKey}
+                    part="voice"
+                    elevenMode={elevenMode}
+                    setElevenMode={setElevenMode}
                     elevenVoiceId={elevenVoiceId}
                     setElevenVoiceId={setElevenVoiceId}
                     elevenVoices={elevenVoices}
@@ -695,21 +1120,29 @@ function App() {
                     elevenModels={elevenModels}
                     isFetchingModels={isFetchingModels}
                     fetchElevenModels={fetchElevenModels}
-                    elevenLanguage={elevenLanguage}
-                    setElevenLanguage={setElevenLanguage}
-                    elevenStability={elevenStability}
-                    setElevenStability={setElevenStability}
-                    elevenSimilarity={elevenSimilarity}
-                    setElevenSimilarity={setElevenSimilarity}
+                    elevenUserInfo={elevenUserInfo}
+                  />
+                )}
+
+                {engine === "openai" && (
+                  <OpenAIControls
+                    part="voice"
+                    openaiVoice={openaiVoice}
+                    setOpenaiVoice={setOpenaiVoice}
+                    openaiVoices={openaiVoices}
+                    isSyncingOpenaiVoices={isSyncingOpenaiVoices}
+                    syncOpenaiVoices={syncOpenaiVoices}
+                    openaiModel={openaiModel}
+                    setOpenaiModel={setOpenaiModel}
+                    openaiModels={openaiModels}
+                    isFetchingOpenaiModels={isFetchingOpenaiModels}
+                    syncOpenaiModels={syncOpenaiModels}
                   />
                 )}
 
                 {engine === "azure" && (
                   <AzureControls
-                    azureKey={azureKey}
-                    setAzureKey={setAzureKey}
-                    azureRegion={azureRegion}
-                    setAzureRegion={setAzureRegion}
+                    part="voice"
                     azureVoice={azureVoice}
                     setAzureVoice={setAzureVoice}
                   />
@@ -717,12 +1150,134 @@ function App() {
 
                 {engine === "sarvam" && (
                   <SarvamControls
-                    sarvamModel={sarvamModel}
-                    setSarvamModel={setSarvamModel}
+                    part="voice"
                     sarvamLanguage={sarvamLanguage}
                     setSarvamLanguage={setSarvamLanguage}
                     sarvamSpeaker={sarvamSpeaker}
                     setSarvamSpeaker={setSarvamSpeaker}
+                  />
+                )}
+
+                {/* Input Text Header */}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+                  <label htmlFor="tts-text" className="panel-label" style={{ marginBottom: 0 }}>
+                    {engine === "elevenlabs" && elevenMode === "sfx" ? "Sound Effect Prompt" : "Input Text & Script"}
+                  </label>
+                  <span className="char-count" style={{ margin: 0 }}>
+                    {text.length}/{engine === "openai" ? 4096 : 5000} characters
+                  </span>
+                </div>
+
+                <textarea
+                  id="tts-text"
+                  className="text-input"
+                  placeholder={
+                    engine === "elevenlabs" && elevenMode === "sfx"
+                      ? "Describe the sound effect to generate (e.g., Deep cinematic space explosion with low frequency rumble and lingering echo)..."
+                      : "Type or paste your text here..."
+                  }
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  maxLength={engine === "openai" ? 4096 : 5000}
+                />
+
+                {/* Quick Presets Toolbar */}
+                <div className="input-toolbar-bottom">
+                  <div className="quick-presets">
+                    <span style={{ fontSize: "11px", fontWeight: "600", color: "var(--text)" }}>Presets:</span>
+                    <button
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => setText("Welcome! Experience ultra-realistic voice synthesis across multiple world-class engines.")}
+                      title="Load welcome prompt"
+                    >
+                      👋 Greeting
+                    </button>
+                    <button
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => setText("Hello everyone, and welcome back to today's episode. Today we explore groundbreaking breakthroughs in artificial intelligence.")}
+                      title="Load podcast intro"
+                    >
+                      🎙️ Podcast
+                    </button>
+                    <button
+                      type="button"
+                      className="preset-chip"
+                      onClick={() => setText("Deep within the ancient cedar forest, a silent mystery was waiting to be discovered beneath the starlit sky.")}
+                      title="Load storytelling sample"
+                    >
+                      📖 Story
+                    </button>
+                    {text.length > 0 && (
+                      <button
+                        type="button"
+                        className="preset-chip clear"
+                        onClick={() => setText("")}
+                        title="Clear text"
+                      >
+                        🧹 Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Configurations panel (Right: Parameters & Fine Tuning) */}
+              <div className="controls-panel">
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "2px" }}>
+                  <h3 className="panel-subtitle">Parameters & Fine-Tuning</h3>
+                  <span style={{ fontSize: "11px", color: "var(--text)", fontWeight: "500" }}>Acoustic Tuning</span>
+                </div>
+
+                {engine === "openai" && (
+                  <OpenAIControls
+                    part="params"
+                    openaiKey={openaiKey}
+                    setOpenaiKey={setOpenaiKey}
+                    openaiFormat={openaiFormat}
+                    setOpenaiFormat={setOpenaiFormat}
+                  />
+                )}
+
+                {engine === "elevenlabs" && (
+                  <ElevenLabsControls
+                    part="params"
+                    elevenKey={elevenKey}
+                    setElevenKey={setElevenKey}
+                    elevenMode={elevenMode}
+                    elevenLanguage={elevenLanguage}
+                    setElevenLanguage={setElevenLanguage}
+                    elevenOutputFormat={elevenOutputFormat}
+                    setElevenOutputFormat={setElevenOutputFormat}
+                    elevenStability={elevenStability}
+                    setElevenStability={setElevenStability}
+                    elevenSimilarity={elevenSimilarity}
+                    setElevenSimilarity={setElevenSimilarity}
+                    elevenStyle={elevenStyle}
+                    setElevenStyle={setElevenStyle}
+                    elevenSpeakerBoost={elevenSpeakerBoost}
+                    setElevenSpeakerBoost={setElevenSpeakerBoost}
+                    elevenSfxDuration={elevenSfxDuration}
+                    setElevenSfxDuration={setElevenSfxDuration}
+                  />
+                )}
+
+                {engine === "azure" && (
+                  <AzureControls
+                    part="params"
+                    azureKey={azureKey}
+                    setAzureKey={setAzureKey}
+                    azureRegion={azureRegion}
+                    setAzureRegion={setAzureRegion}
+                  />
+                )}
+
+                {engine === "sarvam" && (
+                  <SarvamControls
+                    part="params"
+                    sarvamModel={sarvamModel}
+                    setSarvamModel={setSarvamModel}
                     sarvamPace={sarvamPace}
                     setSarvamPace={setSarvamPace}
                   />
@@ -733,9 +1288,9 @@ function App() {
                   <div
                     className="control-group slider-row-compact"
                     style={{
-                      marginTop: "14px",
+                      marginTop: "6px",
                       borderTop: "1px solid var(--border)",
-                      paddingTop: "14px",
+                      paddingTop: "6px",
                     }}
                   >
                     <div className="slider-header">
@@ -765,40 +1320,86 @@ function App() {
                   </div>
                 )}
 
-                {/* Actions */}
-                <div className="actions-wrapper">
+                {/* Stored Audio Cache Hit Banner */}
+                {cachedMatch && (
+                  <div className="cache-banner">
+                    <span>⚡ Stored in local storage ({cachedMatch.voiceName || cachedMatch.voice})</span>
+                    <button
+                      type="button"
+                      onClick={() => handlePlayStoredAudio(cachedMatch)}
+                      className="cache-banner-btn"
+                    >
+                      Play Stored (0 API Cost)
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            {/* Movie Play Bottom Bar: Full-Width Across Input Text & Parameters */}
+            <div className="movie-player-bottom-bar">
+              {/* Timeline Scrubber Bar */}
+              <div className="movie-player-timeline">
+                <span className="movie-time-display">{formatTime(currentTime)}</span>
+                <div className="movie-scrubber-track">
+                  <input
+                    type="range"
+                    min="0"
+                    max={audioDuration || 100}
+                    step="0.1"
+                    value={audioDuration ? Math.min(currentTime, audioDuration) : 0}
+                    onChange={handleSeek}
+                    disabled={!audioDuration}
+                    className="movie-scrubber-slider"
+                    style={{
+                      background: audioDuration
+                        ? `linear-gradient(to right, var(--accent) 0%, var(--accent) ${(currentTime / (audioDuration || 1)) * 100}%, var(--border) ${(currentTime / (audioDuration || 1)) * 100}%, var(--border) 100%)`
+                        : "var(--border)",
+                    }}
+                    title={audioDuration ? `Seek: ${formatTime(currentTime)} / ${formatTime(audioDuration)}` : "Generate audio to scrub"}
+                  />
+                </div>
+                <span className="movie-time-display">
+                  {audioDuration ? formatTime(audioDuration) : "--:--"}
+                </span>
+              </div>
+
+              {/* Main Controls Deck: Transport, Waveform, Tools */}
+              <div className="movie-player-deck">
+                {/* Left: Transport Playback Controls */}
+                <div className="movie-transport-controls">
                   {isPlaying ? (
                     <button
                       onClick={handlePause}
-                      className="action-btn pause-btn"
+                      className="movie-btn-play is-playing"
                       aria-label="Pause Audio"
+                      title="Pause playback"
                     >
-                      <svg viewBox="0 0 24 24" className="btn-icon">
-                        <path
-                          fill="currentColor"
-                          d="M14,19H18V5H14M6,19H10V5H6V19Z"
-                        />
+                      <svg viewBox="0 0 24 24" style={{ width: "16px", height: "16px", fill: "currentColor" }}>
+                        <path d="M14,19H18V5H14M6,19H10V5H6V19Z" />
                       </svg>
-                      Pause
+                      <span>Pause</span>
                     </button>
                   ) : (
                     <button
                       onClick={handlePlay}
-                      className="action-btn play-btn"
+                      className="movie-btn-play"
                       disabled={isLoading}
                       aria-label="Play Audio"
+                      title={isPaused ? "Resume playback" : "Synthesize speech & play"}
                     >
                       {isLoading ? (
-                        <span className="spinner"></span>
+                        <>
+                          <span className="spinner"></span>
+                          <span>Synthesizing...</span>
+                        </>
                       ) : (
                         <>
-                          <svg viewBox="0 0 24 24" className="btn-icon">
-                            <path
-                              fill="currentColor"
-                              d="M8,5.14V19.14L19,12.14L8,5.14Z"
-                            />
+                          <svg viewBox="0 0 24 24" style={{ width: "16px", height: "16px", fill: "currentColor" }}>
+                            <path d="M8,5.14V19.14L19,12.14L8,5.14Z" />
                           </svg>
-                          {isPaused ? "Resume" : "Generate & Play"}
+                          <span>{isPaused ? "Resume" : "Generate & Play"}</span>
                         </>
                       )}
                     </button>
@@ -806,59 +1407,282 @@ function App() {
 
                   <button
                     onClick={handleStop}
-                    className="action-btn stop-btn"
+                    className="movie-btn-stop"
                     disabled={!isPlaying && !isPaused}
                     aria-label="Stop Audio"
+                    title="Stop playback and reset"
                   >
-                    <svg viewBox="0 0 24 24" className="btn-icon">
-                      <path fill="currentColor" d="M18,18H6V6H18V18Z" />
+                    <svg viewBox="0 0 24 24" style={{ width: "14px", height: "14px", fill: "currentColor" }}>
+                      <path d="M18,18H6V6H18V18Z" />
                     </svg>
-                    Stop
-                  </button>
-
-                  {audioDuration !== null && !isLoading && (
-                    <div className="audio-duration" style={{ marginLeft: "auto", display: "flex", alignItems: "center", fontSize: "0.85rem", color: "var(--text-secondary)", fontWeight: "500", padding: "0 10px" }}>
-                      {Math.floor(audioDuration / 60)}:{(Math.floor(audioDuration % 60)).toString().padStart(2, '0')}
-                    </div>
-                  )}
-                  <button
-                    onClick={handleDownload}
-                    className="action-btn download-btn"
-                    disabled={!audioUrl}
-                    style={{
-                      marginLeft: audioDuration !== null && !isLoading ? "10px" : "auto",
-                      background: "rgba(79, 70, 229, 0.05)",
-                      border: "1px solid var(--accent)",
-                      color: "var(--accent)",
-                    }}
-                    aria-label="Download Audio File"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="btn-icon"
-                      style={{ fill: "currentColor" }}
-                    >
-                      <path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
-                    </svg>
-                    Download
+                    <span>Stop</span>
                   </button>
                 </div>
 
-                {/* Audio Visualization Waves */}
-                <div
-                  className={`audio-visualization ${isPlaying ? "animating" : ""}`}
-                >
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
-                  <div className="bar"></div>
+                {/* Center: Movie Audio Waveform & Status Info */}
+                <div className="movie-center-deck">
+                  <div className={`movie-waveform ${isPlaying ? "animating" : ""}`}>
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <div key={i} className="movie-wave-bar"></div>
+                    ))}
+                  </div>
+                  <div className="movie-meta-tag">
+                    <span style={{ fontWeight: "700", color: "var(--text-h)" }}>{activeVoiceName}</span>
+                    <span>•</span>
+                    <span className={`stored-engine-tag tag-${engine.toLowerCase()}`}>{engine}</span>
+                    {cachedMatch && (
+                      <>
+                        <span>•</span>
+                        <span style={{ color: "#059669", fontWeight: "600" }}>⚡ Cached</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: Tools & Utilities (Speed, Save Locally, Download) */}
+                <div className="movie-tools-deck">
+                  {/* Playback speed toggle */}
+                  {engine !== "sarvam" && (
+                    <button
+                      type="button"
+                      onClick={handleCycleSpeed}
+                      className="movie-btn-speed"
+                      title="Click to cycle playback speed (0.75x, 1x, 1.25x, 1.5x, 2x)"
+                    >
+                      {playbackSpeed.toFixed(2)}x
+                    </button>
+                  )}
+
+                  {/* Save to Local Storage button */}
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentAudio}
+                    className={`movie-btn-tool ${isCurrentAudioSaved ? "saved" : ""}`}
+                    disabled={!audioBlob || isCurrentAudioSaved}
+                    title="Save current audio to Local Storage (no need to generate again)"
+                  >
+                    <svg viewBox="0 0 24 24" style={{ width: "14px", height: "14px", fill: "currentColor" }}>
+                      <path d="M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z" />
+                    </svg>
+                    <span>{isCurrentAudioSaved ? "Saved Locally" : "Save Audio"}</span>
+                  </button>
+
+                  {/* Download MP3 button */}
+                  <button
+                    onClick={handleDownload}
+                    className="movie-btn-tool"
+                    disabled={!audioUrl}
+                    title="Download audio file"
+                  >
+                    <svg viewBox="0 0 24 24" style={{ width: "14px", height: "14px", fill: "currentColor" }}>
+                      <path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z" />
+                    </svg>
+                    <span>Download</span>
+                  </button>
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Stored Audio Library & History in Local Storage */}
+          <div className="stored-audios-container" id="audio-history">
+            <div className="stored-header" onClick={() => setShowSavedLibrary(!showSavedLibrary)}>
+              <div className="stored-title">
+                <svg viewBox="0 0 24 24" style={{ width: "17px", height: "17px", fill: "var(--accent)" }}>
+                  <path d="M19,20H4C2.89,20 2,19.1 2,18V6C2,4.89 2.89,4 4,4H10L12,6H19A2,2 0 0,1 21,8H21L4,8V18L6.14,10H23.21L20.93,18.5C20.7,19.37 19.92,20 19,20Z"/>
+                </svg>
+                <span>History of Saved Audios (Local Storage)</span>
+                <span className="stored-badge">
+                  {savedAudios.length} saved
+                  {filteredAudios.length !== savedAudios.length && ` • ${filteredAudios.length} filtered`}
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+                <label 
+                  onClick={(e) => e.stopPropagation()} 
+                  style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "var(--text-h)", cursor: "pointer" }}
+                >
+                  <input 
+                    type="checkbox" 
+                    checked={isAutoSaveEnabled} 
+                    onChange={(e) => setIsAutoSaveEnabled(e.target.checked)} 
+                  />
+                  Auto-save new audios
+                </label>
+                {savedAudios.length > 0 && (
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleClearAllStoredAudios(); }} 
+                    style={{ background: "none", border: "none", color: "var(--text)", fontSize: "11px", cursor: "pointer", textDecoration: "underline" }}
+                  >
+                    Clear All
+                  </button>
+                )}
+                <span style={{ fontSize: "12px", color: "var(--text)", fontWeight: "600" }}>
+                  {showSavedLibrary ? "▲ Hide" : "▼ Show"}
+                </span>
+              </div>
+            </div>
+
+            {showSavedLibrary && (
+              <>
+                {/* History Filter Bar */}
+                {savedAudios.length > 0 && (
+                  <div className="history-filter-bar">
+                    <div className="history-filter-controls">
+                      {/* Filter by Voice Profile */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span className="history-filter-label">Voice:</span>
+                        <select
+                          className="history-select"
+                          value={historyVoiceFilter}
+                          onChange={(e) => setHistoryVoiceFilter(e.target.value)}
+                          title="Filter by Voice Profile"
+                        >
+                          <option value="all">All Voices ({uniqueVoiceProfiles.length})</option>
+                          {uniqueVoiceProfiles.map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Filter by Engine */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span className="history-filter-label">Engine:</span>
+                        <select
+                          className="history-select"
+                          value={historyEngineFilter}
+                          onChange={(e) => setHistoryEngineFilter(e.target.value)}
+                          title="Filter by TTS Engine"
+                        >
+                          <option value="all">All Engines</option>
+                          {uniqueEngines.map((eng) => (
+                            <option key={eng} value={eng}>
+                              {eng}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Search speech text / voice */}
+                      <input
+                        type="text"
+                        placeholder="Search text or voice..."
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        className="stored-search-input"
+                        style={{ minWidth: "150px" }}
+                      />
+
+                      {(historyVoiceFilter !== "all" || historyEngineFilter !== "all" || historySearch.trim()) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setHistoryVoiceFilter("all");
+                            setHistoryEngineFilter("all");
+                            setHistorySearch("");
+                          }}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "var(--accent)",
+                            fontSize: "11px",
+                            cursor: "pointer",
+                            fontWeight: "600",
+                            textDecoration: "underline"
+                          }}
+                        >
+                          Reset Filters
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Group by Voice Profile vs Chronological view */}
+                    <div className="history-view-toggle">
+                      <button
+                        type="button"
+                        className={`history-view-btn ${historyGroupByVoice ? "active" : ""}`}
+                        onClick={() => setHistoryGroupByVoice(true)}
+                        title="Divide history based on Voice Profiles"
+                      >
+                        👥 Group by Voice
+                      </button>
+                      <button
+                        type="button"
+                        className={`history-view-btn ${!historyGroupByVoice ? "active" : ""}`}
+                        onClick={() => setHistoryGroupByVoice(false)}
+                        title="Show chronological flat timeline"
+                      >
+                        ⏱️ Timeline
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="stored-list">
+                  {savedAudios.length === 0 ? (
+                    <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text)", fontSize: "13px" }}>
+                      <div style={{ fontSize: "24px", marginBottom: "6px" }}>🎧</div>
+                      <strong>No audios saved yet.</strong>
+                      <p style={{ margin: "6px 0 0 0", fontSize: "12px", opacity: 0.8 }}>
+                        Generate any speech with ElevenLabs, OpenAI, Azure, or Sarvam AI — it will automatically be stored here in your history so you can replay it anytime without spending API credits!
+                      </p>
+                    </div>
+                  ) : filteredAudios.length === 0 ? (
+                    <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--text)", fontSize: "13px" }}>
+                      <div style={{ fontSize: "22px", marginBottom: "6px" }}>🔍</div>
+                      <strong>No saved audios match your filter.</strong>
+                      <p style={{ margin: "6px 0 0 0", fontSize: "12px", opacity: 0.8 }}>
+                        Try clearing or changing your Voice Profile or Engine filter.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoryVoiceFilter("all");
+                          setHistoryEngineFilter("all");
+                          setHistorySearch("");
+                        }}
+                        style={{
+                          marginTop: "10px",
+                          padding: "5px 12px",
+                          fontSize: "12px",
+                          borderRadius: "6px",
+                          background: "var(--accent-bg)",
+                          border: "1px solid var(--accent-border)",
+                          color: "var(--accent)",
+                          cursor: "pointer",
+                          fontWeight: "600",
+                        }}
+                      >
+                        Reset All Filters
+                      </button>
+                    </div>
+                  ) : historyGroupByVoice ? (
+                    audiosByVoiceProfile.map((group) => (
+                      <div key={group.voiceName} className="voice-profile-group">
+                        <div className="voice-profile-header">
+                          <div className="voice-profile-title">
+                            <span style={{ fontSize: "14px" }}>🎙️</span>
+                            <span>{group.voiceName}</span>
+                            <span className={`stored-engine-tag tag-${(group.engine || "azure").toLowerCase()}`}>
+                              {group.engine || "TTS"}
+                            </span>
+                          </div>
+                          <span className="voice-profile-count">
+                            {group.items.length} {group.items.length === 1 ? "take" : "takes"}
+                          </span>
+                        </div>
+                        {group.items.map((item) => renderStoredAudioItem(item))}
+                      </div>
+                    ))
+                  ) : (
+                    filteredAudios.map((item) => renderStoredAudioItem(item))
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </section>
 
