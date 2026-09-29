@@ -40,7 +40,7 @@ export default function ElevenLabsControls({
   const renderVoiceSection = () => (
     <div className="engine-controls">
       {/* ElevenLabs Mode Toggle: TTS vs Sound Effects */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', background: 'rgba(0,0,0,0.03)', borderRadius: '8px', padding: '2px', border: '1px solid var(--border)' }}>
           <button
             type="button"

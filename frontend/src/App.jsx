@@ -1585,7 +1585,7 @@ function App() {
                         value={historySearch}
                         onChange={(e) => setHistorySearch(e.target.value)}
                         className="stored-search-input"
-                        style={{ minWidth: "150px" }}
+                        style={{ minWidth: "120px", flex: "1 1 auto" }}
                       />
 
                       {(historyVoiceFilter !== "all" || historyEngineFilter !== "all" || historySearch.trim()) && (
