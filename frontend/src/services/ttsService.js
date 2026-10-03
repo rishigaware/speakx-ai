@@ -175,19 +175,27 @@ export const synthesizeAzureSpeech = async ({ key, region, voice, text }) => {
 };
 
 // 4. Sarvam AI Service Calls (Proxied through backend)
-export const synthesizeSarvamSpeech = async ({ model, text, languageCode, speaker, pace }) => {
+export const synthesizeSarvamSpeech = async ({ model, text, languageCode, speaker, pace, apiKey }) => {
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5001';
+  const sarvamKey = apiKey || import.meta.env.VITE_SARVAM_API_KEY || '';
+
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+  if (sarvamKey) {
+    headers['x-sarvam-api-key'] = sarvamKey;
+  }
+
   const response = await fetch(`${backendUrl}/api/tts/sarvam`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: headers,
     body: JSON.stringify({
       text: text,
-      model: model,
-      target_language_code: languageCode,
-      speaker: speaker,
-      pace: pace
+      model: model || 'bulbul:v3',
+      target_language_code: languageCode || 'hi-IN',
+      speaker: speaker || 'shubh',
+      pace: pace || 1.0,
+      speech_sample_rate: 22050
     })
   });
 

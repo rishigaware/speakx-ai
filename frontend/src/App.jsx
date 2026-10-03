@@ -1221,6 +1221,16 @@ function App() {
                     >
                       📖 Story
                     </button>
+                    {engine === "sarvam" && (
+                      <button
+                        type="button"
+                        className="preset-chip"
+                        onClick={() => setText("नमस्ते! Sarvam AI में आपका स्वागत है। हम भारतीय भाषाओं के लिए अत्याधुनिक voice technology बनाते हैं। हमारे text-to-speech models प्राकृतिक और इंसान जैसी आवाज़ें produce करते हैं।")}
+                        title="Load Sarvam Hindi sample"
+                      >
+                        🇮🇳 Sarvam Hindi
+                      </button>
+                    )}
                     {text.length > 0 && (
                       <button
                         type="button"
